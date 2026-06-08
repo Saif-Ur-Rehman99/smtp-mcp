@@ -2,14 +2,29 @@ import os
 import httpx
 import uvicorn
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 # ── Config ────────────────────────────────────────────────────────────────────
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 RESEND_API_URL = "https://api.resend.com/emails"
 
+# Allow the deployed Railway domain (and localhost for local dev) past the
+# MCP SDK's DNS-rebinding Host/Origin checks — otherwise every request gets
+# rejected with "421 Invalid Host header".
+allowed_hosts = ["127.0.0.1:*", "localhost:*"]
+allowed_origins = ["http://127.0.0.1:*", "http://localhost:*"]
+railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+if railway_domain:
+    allowed_hosts.append(railway_domain)
+    allowed_origins.append(f"https://{railway_domain}")
+
 mcp = FastMCP(
     name="resend-mcp",
     instructions="Send transactional emails via the Resend API.",
+    transport_security=TransportSecuritySettings(
+        allowed_hosts=allowed_hosts,
+        allowed_origins=allowed_origins,
+    ),
 )
 
 # ── Helper ────────────────────────────────────────────────────────────────────
