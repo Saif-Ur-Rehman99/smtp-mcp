@@ -1,48 +1,95 @@
-# smtp-mcp
-Railway Hosted MCP Server for Sending Mails on using Claude Code
+# resend-mcp-server
 
-## Step 1 — Copy this folder to your Ubuntu machine
-Download smtp-mcp folder and place it anywhere, e.g. ~/smtp-mcp
+A Python MCP server that exposes Resend email sending as tools — deployable to Railway so Claude.ai Routines can use it as a connector.
 
-## Step 2 — Install dependencies
+## Tools exposed
+
+| Tool | Description |
+|---|---|
+| `send_email` | Send an HTML email to one recipient |
+| `send_email_plain` | Send a plain-text email to one recipient |
+| `send_batch_emails` | Send the same email to multiple recipients |
+
+---
+
+## Local development
+
 ```bash
-cd ~/smtp-mcp
-npm install
+# 1. Clone / enter directory
+cd resend-mcp-server
+
+# 2. Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Set up env
+cp .env.example .env
+# Edit .env and add your RESEND_API_KEY
+
+# 5. Run locally (SSE mode)
+MCP_TRANSPORT=sse python server.py
+# Server runs at http://localhost:8000/sse
 ```
 
-## Step 3 — Get your Gmail App Password
-Gmail requires an App Password (not your real password) for SMTP.
-1. Go to myaccount.google.com/security
-2. Enable 2-Step Verification (if not already on)
-3. Go to myaccount.google.com/apppasswords
-4. Create new app password → name it "Claude SMTP"
-5. Copy the 16-character password it gives you
+---
 
-## Step 4 — Set environment variables
-Add these to your ~/.bashrc or ~/.zshrc:
+## Deploy to Railway
+
+### Option A: Railway CLI
+
 ```bash
-export SMTP_USER="your-gmail@gmail.com"
-export SMTP_PASS="your-16-char-app-password"
-export SMTP_HOST="smtp.gmail.com"
-export SMTP_PORT="587"
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login
+railway login
+
+# Create new project
+railway init
+
+# Deploy
+railway up
+
+# Set environment variables
+railway variables set RESEND_API_KEY=your_key_here
+railway variables set MCP_TRANSPORT=sse
 ```
-Then run: source ~/.bashrc
 
-## Step 5 — Add as custom connector in Claude Code
-1. Go to claude.ai/code → Settings → Connectors
-2. Click "Add custom connector"
-3. Enter this command:
-   node /full/path/to/smtp-mcp/index.js
-4. Add environment variables:
-   SMTP_USER = your-gmail@gmail.com
-   SMTP_PASS = your-app-password
+### Option B: Railway Dashboard (no CLI)
 
-## Step 6 — Update your routine prompt
-Add this at the end of your routine instructions:
+1. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub
+2. Connect this repo
+3. Go to **Variables** tab → add:
+   - `RESEND_API_KEY` = your Resend API key
+   - `MCP_TRANSPORT` = `sse`
+4. Railway auto-detects the `Procfile` and deploys
 
-"When the review is complete, use the send_email tool to send the report:
-- to: adilrao.cs@gmail.com
-- subject: Code Review: New PR on RAG-Stack
-- body: [full review report in plain English]
+---
 
-Do not use Gmail connector. Use the send_email tool directly."
+## Add as Claude.ai Connector
+
+Once deployed, Railway gives you a public URL like:
+```
+https://resend-mcp-server-production.up.railway.app
+```
+
+Your SSE endpoint is:
+```
+https://resend-mcp-server-production.up.railway.app/sse
+```
+
+Steps:
+1. Go to **claude.ai/settings/connectors**
+2. Click **Add custom connector**
+3. Paste the `/sse` URL
+4. Save → it will appear in your Routines
+
+---
+
+## Notes
+
+- The default `from_address` (`onboarding@resend.dev`) only works in Resend sandbox mode (sends to your verified email only)
+- For production sending to any address, add and verify your own domain at [resend.com/domains](https://resend.com/domains)
