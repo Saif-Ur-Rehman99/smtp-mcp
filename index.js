@@ -1,50 +1,56 @@
-#!/usr/bin/env node
-
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import express from "express";
 import nodemailer from "nodemailer";
 import { z } from "zod";
-import express from "express";
 
 const app = express();
-app.use(express.json());
+const server = new McpServer({ name: "send-mail", version: "1.0.0" });
 
-// Health check for Railway
-app.get("/", (req, res) => res.json({ status: "SMTP MCP Server running" }));
+// Configure your SMTP transporter
+const transporter = nodemailer.createTransport({
+  service: "gmail",  // or use host/port for raw SMTP
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,  // Gmail app password
+  },
+});
 
-// Email endpoint
-app.post("/send", async (req, res) => {
-  const { to, subject, body } = req.body;
-
-  if (!to || !subject || !body) {
-    return res.status(400).json({ error: "Missing to, subject, or body" });
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: parseInt(process.env.SMTP_PORT || "587"),
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  try {
+// Register the send_email tool
+server.tool(
+  "send_email",
+  "Send an email via SMTP",
+  {
+    to: z.string().describe("Recipient email address"),
+    subject: z.string().describe("Email subject"),
+    body: z.string().describe("Email body (plain text or HTML)"),
+    from: z.string().optional().describe("Sender name"),
+  },
+  async ({ to, subject, body, from }) => {
     await transporter.sendMail({
-      from: `"Claude Code Reviewer" <${process.env.SMTP_USER}>`,
+      from: `"${from || "Claude"}" <${process.env.EMAIL_USER}>`,
       to,
       subject,
-      text: body,
+      html: body,
     });
-
-    res.json({ status: "success", message: `Email sent to ${to}` });
-  } catch (error) {
-    res.status(500).json({ status: "error", message: error.message });
+    return { content: [{ type: "text", text: `Email sent to ${to}` }] };
   }
+);
+
+// SSE transport — this is what Claude Code connects to
+const transports = {};
+
+app.get("/sse", async (req, res) => {
+  const transport = new SSEServerTransport("/messages", res);
+  transports[transport.sessionId] = transport;
+  await server.connect(transport);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`SMTP server running on port ${PORT}`);
+app.post("/messages", express.json(), async (req, res) => {
+  const { searchParams } = new URL(req.url, "http://localhost");
+  const sessionId = searchParams.get("sessionId");
+  const transport = transports[sessionId];
+  if (transport) await transport.handlePostMessage(req, res);
 });
+
+app.listen(process.env.PORT || 3000);
