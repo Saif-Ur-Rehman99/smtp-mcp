@@ -1,1 +1,1 @@
-This is a custom tool to send email using SMTP 
+This is a custom tool to send email using Simple mail transfer protocol
